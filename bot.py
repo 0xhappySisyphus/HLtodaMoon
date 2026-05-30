@@ -138,8 +138,6 @@ async def fetch_and_format(body: dict, header: str = "") -> str:
         if key not in seen:
             seen.add(key)
             deduped.append(it)
-    # 按时间倒序，取最新的
-    deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
     items = deduped[:LIMIT]
     titles     = [clean(it.get("text", "")) for it in items]
     translated = await translate(titles)
@@ -197,7 +195,7 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await waiting.edit_text(f"❌ {e}")
 
 async def cmd_hot(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    score = 50
+    score = 80
     coins = []
     for a in (ctx.args or []):
         if a.isdigit():
