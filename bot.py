@@ -348,13 +348,14 @@ async def _watch_loop(chat_id: int, username: str, app, interval: int = 120):
                     url_str  = f'<a href="{url}">查看原推 ↗</a>' if url else ""
                     # 中英对照：原文 + 译文，只有内容不同才显示双语
                     if zh_text.strip() != raw_text.strip():
-                        body_text = f"{raw_text}\n\n🈯 {zh_text}"
+                        body_text = f"{raw_text}\n\n──\n{zh_text}"
                     else:
                         body_text = raw_text
+                    link_line = f"\n{url_str}" if url_str else ""
                     msg = (
                         f"🔔  <b>@{username}</b> 发推了\n\n"
-                        f"{body_text}\n\n"
-                        f"❤ {like}  🔁 {rt}  {url_str}"
+                        f"{body_text}"
+                        f"{link_line}"
                     )
                     await app.bot.send_message(chat_id, msg,
                                                parse_mode=ParseMode.HTML,
