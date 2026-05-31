@@ -256,56 +256,50 @@ async def cmd_reuters(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── 每日加密日报 ──────────────────────────────────────────────
 async def cmd_daily(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    coins = [a.upper() for a in (ctx.args or [])]
+    coin_label = f"（{'  '.join(coins)}）" if coins else ""
     waiting = await update.message.reply_text("⏳ 正在生成日报…")
     today = datetime.now()
     date_str = f"{today.year}年{today.month}月{today.day}日"
     try:
-        d = await nl_get("/open/free_categories")
-        cats = d if isinstance(d, list) else d.get("data", [])
-        crypto_cat = next((c for c in cats if c.get("key") == "crypto"), None)
-        if not crypto_cat:
-            crypto_cat = cats[0] if cats else None
-
-        if not crypto_cat:
-            await waiting.edit_text("❌ 暂无分类数据")
-            return
-
-        cat_key = crypto_cat["key"]
-        d2 = await nl_get("/open/free_hot", params={"category": cat_key})
-        dd = d2 if isinstance(d2, dict) else d2.get("data", {})
-        news_items  = (dd.get("news") or {}).get("items", [])
-        tweet_items = (dd.get("tweets") or {}).get("items", [])
-
-        lines = [
-            f"☀️  加密日报  {date_str}",
-            "――――――――――――――――――",
-        ]
-
-        if news_items:
-            lines.append("\n📰  今日热点新闻\n")
-            for n in news_items[:3]:
-                title  = clean(n.get("title", n.get("text", "")))
-                score  = n.get("score", "")
-                signal = n.get("signal", "")
-                link   = n.get("link", "")
-                sig_icon = {"bullish": "▲", "bearish": "▼", "long": "▲", "short": "▼"}.get(signal, "")
-                link_str = f'  <a href="{link}">原文</a>' if link else ""
-                score_str = f"  [{score}分 {sig_icon}]" if score else ""
-                lines.append(f"• <b>{title}</b>{score_str}{link_str}")
-
-        if tweet_items:
-            lines.append("\n🐦  热门推文\n")
-            for t in tweet_items[:3]:
-                content = clean(t.get("content", ""))[:80]
-                handle  = t.get("handle", "")
-                likes   = t.get("metrics", {}).get("likes", 0)
-                url     = t.get("url", "")
-                url_str = f'  <a href="{url}">查看</a>' if url else ""
-                lines.append(f"• {content}\n  @{handle}  ❤ {likes}{url_str}")
-
-        lines.append("\n――――――――――――――――――")
-        lines.append("数据来源：6551.io")
-
+        body: dict = {"score": 50, "limit": 6}
+        if coins:
+            body["coins"] = coins
+        data  = await nl_post("/open/news_search", body)
+        raw   = data.get("data", [])
+        items = raw if isinstance(raw, list) else raw.get("list", [])
+        seen, deduped = set(), []
+        for it in items:
+            key = clean(it.get("text", ""))[:20]
+            if key not in seen:
+                seen.add(key)
+                deduped.append(it)
+        deduped.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        items = deduped[:5]
+        titles     = [clean(it.get("text", "")) for it in items]
+        translated = await translate(titles)
+        lines = [f"☀️  加密日报{coin_label}  {date_str}", "――――――――――――――――――", ""]
+        for i, it in enumerate(items):
+            ai       = it.get("aiRating", {}) or {}
+            score    = ai.get("score", "")
+            signal   = ai.get("signal", "")
+            source   = it.get("newsType", "")
+            link     = it.get("link", "")
+            coins_t  = [c["symbol"] for c in it.get("coins", [])
+                        if "-" not in c["symbol"] and not c["symbol"].startswith("XYZ")][:3]
+            sig_icon  = {"long": "▲", "short": "▼"}.get(signal, "")
+            score_str = f" [{score}分 {sig_icon}]" if score else ""
+            coin_str  = "  ".join(coins_t) if coins_t else ""
+            link_str  = f'  <a href="{link}">原文</a>' if link else ""
+            title     = translated[i].rstrip("。.")
+            meta      = f"<i>{source}</i>"
+            if coin_str:
+                meta += f"  ·  {coin_str}"
+            lines.append(f"• <b>{title}</b>{score_str}{link_str}")
+            lines.append(f"  {meta}")
+            lines.append("")
+        lines.append("――――――――――――――――――")
+        lines.append("数据来源：6551.io · DeepSeek 翻译")
         await waiting.delete()
         await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML,
                                         disable_web_page_preview=True)
@@ -345,7 +339,9 @@ async def _watch_loop(chat_id: int, username: str, app, interval: int = 120):
             if new_tweets:
                 last_id = new_tweets[0].get("id") or new_tweets[0].get("id_str")
                 for t in reversed(new_tweets):
-                    text    = clean(t.get("text", ""))
+                    raw_text = clean(t.get("text", ""))
+                    translated_list = await translate([raw_text])
+                    text    = translated_list[0]
                     url     = t.get("url", "")
                     like    = t.get("like_count", t.get("favoriteCount", 0))
                     rt      = t.get("retweet_count", t.get("retweetCount", 0))
