@@ -310,11 +310,16 @@ async def cmd_daily(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def _watch_loop(chat_id: int, username: str, app, interval: int = 120):
     """每 interval 秒轮询一次，有新推文就推送"""
     last_id = None
-    # 先取一次最新推文 ID 作为基准，不推送
+    # 先取最新5条推文的 ID 集合作为基准，全部跳过不推送
+    seen_ids: set = set()
     try:
-        d  = await nl_post("/open/twitter_user_tweets", {"username": username, "limit": 1})
+        d  = await nl_post("/open/twitter_user_tweets", {"username": username, "limit": 5})
         dd = d.get("data", {})
         tweets = dd.get("tweets", dd) if isinstance(dd, dict) else dd
+        for t in tweets:
+            tid = t.get("id") or t.get("id_str")
+            if tid:
+                seen_ids.add(str(tid))
         if tweets:
             last_id = tweets[0].get("id") or tweets[0].get("id_str")
     except Exception:
@@ -331,13 +336,17 @@ async def _watch_loop(chat_id: int, username: str, app, interval: int = 120):
 
             new_tweets = []
             for t in tweets:
-                tid = t.get("id") or t.get("id_str")
-                if tid == last_id:
+                tid = str(t.get("id") or t.get("id_str") or "")
+                if tid in seen_ids:
                     break
                 new_tweets.append(t)
 
             if new_tweets:
                 last_id = new_tweets[0].get("id") or new_tweets[0].get("id_str")
+                for t in new_tweets:
+                    tid = str(t.get("id") or t.get("id_str") or "")
+                    if tid:
+                        seen_ids.add(tid)
                 for t in reversed(new_tweets):
                     raw_text = clean(t.get("text", ""))
                     translated_list = await translate([raw_text])
