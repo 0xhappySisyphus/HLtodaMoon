@@ -341,15 +341,20 @@ async def _watch_loop(chat_id: int, username: str, app, interval: int = 120):
                 for t in reversed(new_tweets):
                     raw_text = clean(t.get("text", ""))
                     translated_list = await translate([raw_text])
-                    text    = translated_list[0]
-                    url     = t.get("url", "")
-                    like    = t.get("like_count", t.get("favoriteCount", 0))
-                    rt      = t.get("retweet_count", t.get("retweetCount", 0))
-                    url_str = f'\n<a href="{url}">查看原推</a>' if url else ""
+                    zh_text  = translated_list[0]
+                    url      = t.get("url", "")
+                    like     = t.get("like_count", t.get("favoriteCount", 0))
+                    rt       = t.get("retweet_count", t.get("retweetCount", 0))
+                    url_str  = f'<a href="{url}">查看原推 ↗</a>' if url else ""
+                    # 中英对照：原文 + 译文，只有内容不同才显示双语
+                    if zh_text.strip() != raw_text.strip():
+                        body_text = f"{raw_text}\n\n🈯 {zh_text}"
+                    else:
+                        body_text = raw_text
                     msg = (
                         f"🔔  <b>@{username}</b> 发推了\n\n"
-                        f"{text}{url_str}\n\n"
-                        f"❤ {like}  🔁 {rt}"
+                        f"{body_text}\n\n"
+                        f"❤ {like}  🔁 {rt}  {url_str}"
                     )
                     await app.bot.send_message(chat_id, msg,
                                                parse_mode=ParseMode.HTML,
